@@ -1,6 +1,8 @@
 # JTAG2UPDI (Clone)
 
-[原典の READEME(en_US)](READEME_orig.md) / [この文書の英語版(en_US)](READEME.md) / [この文書の日本語版(ja_JP)](READEME_jp.md)
+- [原典の READEME(en_US)](README_orig.md)
+- [この文書の英語版(en_US)](README.md)
+- [この文書の日本語版(ja_JP)](README_jp.md)
 
 これは [ElTangas/jtag2updi](https://github.com/ElTangas/jtag2updi) ファームウェアの静的なフォークだ。コードの大部分は同じだが、大規模な変更を伴うため upstream 連携は行なっていない。
 

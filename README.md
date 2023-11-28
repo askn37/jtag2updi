@@ -1,6 +1,8 @@
 # JTAG2UPDI (Clone)
 
-[READEME of the original (en_US)](READEME_orig.md) / [English version of this document (en_US)](READEME.md) / [Japanese version of this document (ja_JP)](READEME_jp.md)
+- [READEME of the original (en_US)](README_orig.md)
+- [English version of this document (en_US)](README.md)
+- [Japanese version of this document (ja_JP)](README_jp.md)
 
 This is a static fork of the [ElTangas/jtag2updi](https://github.com/ElTangas/jtag2updi) firmware. Although most of the code is the same, there is no upstream linkage as it involves large-scale changes.
 
