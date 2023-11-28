@@ -1,36 +1,38 @@
 # JTAG2UPDI (Clone)
 
+[READEME of the original (en_US)](READEME_orig.md) / [English version of this document (en_US)](READEME.md) / [Japanese version of this document (ja_JP)](READEME_jp.md)
+
 This is a static fork of the [ElTangas/jtag2updi](https://github.com/ElTangas/jtag2updi) firmware. Although most of the code is the same, there is no upstream linkage as it involves large-scale changes.
 
 Branching point: https://github.com/ElTangas/jtag2updi/tree/07be876105e0b9cfedf2723b0ac88780bcae50d8
 
-The difference between the two should be obtained by `diff -uBw jtag2updi-master/source jtag2updi-main/src`. `JTAG2.cpp` is almost a separate file.
-
-[ORIGINAL READEME(en_US)](READEME_orig.md) [English version of this document(en_US)](READEME.md) [Japanese version of this document(ja_JP)](READEME_jp.md)
+The difference between the two should be obtained by `diff -uBw jtag2updi-master/source jtag2updi-main/src`. `JTAG2.cpp` is almost completely different.
 
 ## What has changed
 
 - Compatible with NVMCTRL version 0,2,3,5. The correspondence in the original text is up to 0 and 2.
-  - Support tinyAVR-0/1/2, megaAVR-0, AVR_DA/DB/DD/EA/EB.
-    - Compatible with UPDI layer SIB (System Information Block).
-  - Operation confirmed devices: ATtiny202 ATmega4809 AVR32DA32 AVR128DB32 AVR32DD14 AVR64DD32 AVR64EA32 (as of November 2023)
- Compatible with AVRDUDE 7.3.
-  - Operation confirmed: AVRDUDE 6.3 7.0 7.1 7.2 7.3 (under development as of November 2023)
-  - Only partial memory blocks can be rewritten using the `-D` option. (as the bootloader does)
-   - This allows you to also use the `write/elase <memtyp>` command in interactive mode.
-  - Compatible with locked devices.
-    - Blind writing of USERROW.
-    - LOCK_BITS Unlock.
-  - Enhanced memory range specification violation detection.
-    - Bulk read/write of up to 256 words (512 bytes) for FLASH memory regions. Others can read/write in bulk up to 256 bytes.
-    - Allows 256word FLASH bulk reading/writing of AVR_DA/DB/DD.
-  - `230400`, `460800`, and `500000` can be practically specified in many environments with the `-b` option.
-    - This does not apply to Arduino compatible machines. Note that when reading and writing large-capacity bulk, you are subject to host-side timeout/error constraints. (Generally, the faster the communication speed, the higher the USB packet loss rate)
-  - Some future experimental expansion attempts.
-    - Not compatible with High-Voltage control. This requires additional hardware and special control code. There are two different specifications for his HV control for current UPDI-enabled devices. There is no easy way to support both. That's what makes this problem so difficult.
+   - Support tinyAVR-0/1/2, megaAVR-0, AVR_DA/DB/DD/EA/EB.
+     - Compatible with UPDI layer SIB (System Information Block).
+   - Main devices confirmed to work: ATtiny202 ATtiny412 ATtiny824 ATtiny1614 ATmega4809 AVR32DA32 AVR128DB32 AVR32DD14 AVR64DD32 AVR64EA32 (as of November 2023)
+- Compatible with AVRDUDE 7.3.
+   - Operation confirmed: `AVRDUDE` `7.2`, `7.3` (under development as of November 2023)
+   - For `6.8` and earlier, use with a specially modified configuration file. Starting from `7.0`, the standard configuration file is sufficient.
+   - Only partial memory blocks can be rewritten using the `-D` option. (as the bootloader does)
+     - This allows you to also use the `write/elase <memtyp>` command in interactive mode.
+   - Compatible with locked devices.
+     - Blind writing of USERROW.
+     - LOCK_BITS Lock/Unlock.
+   - Enhanced memory range specification violation detection.
+     - Allow 256 word FLASH bulk reading/writing of AVR_DA/DB/DD.
+     - Allows 1 word EEPROM reading/writing of AVR_DA/DB/DD. (Standard configuration file is limited to 1 byte unit)
+     - Allows 4 word EEPROM reading/writing of AVR_EA/EB.
+   - `230400`, `460800`, and `500000` can be practically specified in many environments with the `-b` option.
+     - This does not apply to Arduino compatible machines. Please note that when reading and writing large-capacity bulk, you are subject to host-side timeout/error restrictions. (Generally, the faster the communication speed, the higher the USB packet loss rate)
+   - Some enhancements.
+     - Does not support high voltage control. This requires additional hardware and specialized control code. He has two different specifications for his HV control for current UPDI-enabled devices. There is no easy way to support both at the same time, which makes the problem difficult. (See UPDI4AVR technical information)
 - Firmware build and installation has been verified only for Arduino IDE 1.8.x/2.x. Not sure about other methods.
-  - The `source` directory has been changed to `src` to match the Arduino IDE specifications. The location of the `jtag2updi.ino` file is also different.
-  - Unsupported accompanying files have been removed. You may need to copy it from the original location.
+   - The `source` directory has been changed to `src` to match the Arduino IDE specifications. The location of the `jtag2updi.ino` file is also different.
+   - Attached files that are not supported have been removed. Please copy from the original if necessary.
 
 Equipment that can be installed with firmware:
 
@@ -38,16 +40,16 @@ Equipment that can be installed with firmware:
 - megaAVR-0 series --- Arduino UNO WiFi Rev.2 (ATmega4809)
 - AVR_DA/DB Series --- Microchip Curio City
 
-> After installing the firmware, we recommend installing an additional 10uF capacitor between RESET and GND to disable the auto-reset function.
+> After installing the firmware, we recommend installing an additional 10uF capacitor between /RESET and GND to disable the auto-reset function.
 
 Many of the technical elements come from the knowledge gained from the process of developing [UPDI4AVR](https://github.com/askn37/multix-zinnia-updi4avr-firmware-builder/).
-Since UPDI4AVR can only be installed on megaAVR-0 or later devices, his JTAG2UPDI (Clone) was developed to make effective use of older Arduinos.
+Since UPDI4AVR can only be installed on megaAVR-0 or later devices, his JTAG2UPDI (Clone) was created to make effective use of old Arduino.
 
-## Technical explanation
+## Technical information
 
 ### NVMCTRL
 
-NVMCTRL specifications differ depending on each system. The versions are classified into versions 0 to 5, depending on the numbers read from his SIB. They are not compatible with each other because they have different control register positions and definition values, and different control methods.
+NVMCTRL specifications differ depending on each system. The versions are classified into versions 0 to 5, depending on the number read from the SIB. They are not compatible with each other because they have different control register positions and definition values, and different control methods.
 
 A list of control register definitions for each version is shown below.
 
@@ -71,95 +73,127 @@ A list of control register definitions for each version is shown below.
 |$0E|-|-|ADDR2|ADDR2
 |$0F|-|-|_ADDR3_|_ADDR3_
 
-> Symbols in *italics* are defined but do not actually function. \
+> Symbols in italics are defined but do not actually function. \
 > No known implementation of version 1. \
 > Version 4 is assigned to AVR_DU, but currently there is no actual version and no information.
 
 The most significant bit of `NVMCTRL_ADDR2` has a special meaning: 0 is used as a flag to specify the address of the general data area, and 1 is used as a flag to specify the address of the FLASH code area (currently up to 128KiB). Version 0 does not have this, and data and code are not differentiated within the same 64KiB space.
 
-In all versions, FLASH memory is word-oriented. If you do not follow word alignment, you will not get the expected results.
+In all versions, FLASH memory is word-oriented. Operations that do not follow word alignment will not yield the expected results.
 
 NVM writing writes memory data directly to the target address (using UPDI's ST/STS command or assembly's ST/SPM command). Then, the specified address is reflected in the ADDR register, the memory data is reflected in the DATA register, and then passed to internal transfer processing.
 
-### MVMCTRL version 0
+#### NVMCTRL version 0
 
-This system is the only one with a 16-bit address bus system, and the code space is within 64 KiB, the same as the data space. However, the actual code area start address offset starts from 0x8000 for the tinyAVR series and 0x4000 for the megaAVR series, so they must be treated separately.
+This system is the only one with a 16-bit address bus system, and the code space is within 64 KiB, the same as the data space. However, the actual code area start address offset starts from 0x8000 for the tinyAVR series and 0x4000 for the megaAVR series, so the two must be treated separately.
 
 In addition, this system has the following characteristics:
 
-- It has a special working buffer memory that does not appear in the memory space, and is shared by FLASH and EEPROM.
-- Writing a command code to CTRLA after filling the buffer memory starts the actual memory write/erase execution.
+-Has a special working buffer memory that does not appear in memory space and is shared by FLASH and his EEPROM.
+- You can continue to write memory data to both FLASH and EEPROM as long as the buffer memory range is not exceeded.
+- After filling the buffer memory, write the desired command code to CTRLA. When the controller is activated and the target processing is completed, the processing result is reflected in the STATUS register. The controller is deactivated at the end of processing.
 - EEPROM can also be written in bulk with the same page granularity as FLASH, resulting in faster processing.
-- USERROW can be written using the same command code as EEPROM.
+-USERROW can be written using the same command code as EEPROM. (However, you should use a specially prepared method.)
 - FUSE memory has special dedicated write commands. After writing directly to the DATA and ADDR registers, he writes a dedicated command to CTRLA.
 
-> Writing to USERROW uses a special method under UPDI control, so there is no need to worry about the actual memory type.
-
-### MVMCTRL version 2
+#### NVMCTRL version 2
 
 This system has no working buffer memory. It has only one word buffer (that is, DATAL/H register). Therefore, the processing procedure is different.
 
 - Write the desired command code to CTRLA and activate the controller.
 - Write memory data to the target NVM address using ST/SPM instructions.
-- Check the STATUS register, and after completing internal processing, write the NOCMD (or NOOP) command to CTRLA to stop the controller.
+- Check the STATUS register, and after completing the desired processing, write the NOCMD (or NOOP) command to CTRLA to stop the controller.
 - Memory data can be written continuously in the FLASH area as long as it does not exceed the page range.
-- In the EEPROM area, only word granularity (2 bytes) can be written consecutively.
+- In the EEPROM area, only 1 word granularity (within 2 bytes) can be written continuously.
 - FUSE can be written using the same command codes as EEPROM.
-- USERROW can be written using the same command code as FLASH.
+- USERROW can be written using the same command code as FLASH. (However, you should use a specially prepared method.)
 
-> Writing to USERROW uses a special method under UPDI control, so there is no need to worry about the actual memory type.
+Only in this series, the FLASH page granularity is 512 bytes. However, since NVM writers that support this size are not common, `AVRDUDE` attempts to write his data in two 256-byte blocks.
 
-Only this series has a FLASH page granularity of 512 bytes. However, since NVM writers that support this size are not common, `AVRDUDE` tries to write it in two blocks of 256 bytes.
-
-### MVMCTRL version 3,5
+#### NVMCTRL version 3,5
 
 This system has different working buffer memories for his FLASH and EEPROM. Therefore, memory data can be written continuously within that page range.
 
-- Write NOCMD (or NOOP) command to CTRLA to stop internal processing.
+- Write a NOCMD (or NOOP) command to CTRLA to ensure controller deactivation.
 - Write memory data to the target NVM address using ST/SPM instructions.
-- For both FLASH and his EEPROM, memory data can be written continuously as long as it does not exceed the page range.
+-Both FLASH and his EEPROM can write memory data continuously as long as they do not exceed their respective buffer memory ranges (128 bytes and 8 bytes).
 - After filling the buffer memory, write the desired command code to CTRLA. When the controller is activated and the target processing is completed, the processing result is reflected in the STATUS register. The controller is deactivated at the end of processing.
 - FUSE can be written using the same command codes as EEPROM.
-- USERROW can be written using the same command code as FLASH.
+- USERROW can be written using the same command code as FLASH. (However, you should use a specially prepared method.)
 - BOOTROW (specific to version 5) uses the same directive codes as FLASH.
 
-> Writing to USERROW uses a special method under UPDI control, so there is no need to worry about the actual memory type.
-
-Since CTRLC is not used in NVM rewrite work, versions 3 and 5 can share the same control logic. However, since many of the physical addresses in the NVM area are different, they are handled differently.
+In his NVM rewriting work from UPDI, he does not use CTRLC, so versions 3 and 5 can share the same control processing. However, since many of the physical addresses in the NVM area are different, they are handled differently.
 
 ### Partial memory block write
 
-To be able to use the `-D` option of `AVRDUDE` and the `write/erase <memtype>` command in interactive mode, each memory area must support page erasure. The original JTAG2UPDI did not support this, so these could not be used. What it actually does is what a typical bootloader would do: first erase the page at the specified address, then write the given data to its memory.
+To be able to use the `-D` option of `AVRDUDE` and the `write/erase <memtype>` command in interactive mode, each memory area must support page erasure. The original JTAG2UPDI could not handle these. What it actually does is what a typical bootloader would do: first erase the page at the specified address, then write the given data to its memory.
 
-At this time, in NVMCTRL version 2, which has a 512-byte page, `AVRDUDE` divides the data into multiple memory blocks and sends the data, so it is necessary to consider whether or not to erase the page according to the starting address. For the same reason, if the AVRDUDE configuration file does not specify a setting that differs from the page granularity of the real device, partial memory block writes will not give correct results (because the buffer contents will be incorrect).
+> JTAGICE mkII's original XMEGA memory page erase instruction is not used in `AVRDUDE`. Instead, normal memory read/write instructions are used instead.
+
+At this time, in the case of a 512-byte page, since `AVRDUDE` is designed to divide the data into multiple memory blocks and send the data, consideration must be given to determining whether or not the page can be erased depending on the starting address. For the same reason, if a setting different from the page granularity of the actual device is written in the `AVRDUDE` configuration file, partial memory block writing will not show the correct processing result (the buffer contents will become invalid).
 
 ### Locked device compatible
 
-Only USERROW can be written to a locked device. However, reading is not allowed. To make this possible, the following conditions had to be met.
+"Device locking" is one of the functions implemented in devices mainly for security reasons. Locking prevents unauthorized tampering or reading of the contents of the flash memory or EEPROM stored in the device. However, access to UPDI is not denied, and full chip erase and blind writes to the USERROW area are permitted.
 
-- Signatures cannot be read from locked devices. `AVRDUDE` stops the sequence if the desired signature and the read signature do not match, unless the `-F` option is specified.
-- If JTAG2UPDI (or any other NVM writer) returns an error before this determination, the sequence will not advance to the correct break position.
-- Since the "silicon revision confirmation" memory read added in `AVRDUDE 7.3` is performed before the signature read, returning an error here will interfere with the sequence that should be performed after this. This cannot be avoided with `-F` or `-V`. Therefore, it was not possible to permanently unlock a locked device by writing a valid LOCK_BITS.
+To lock the device, simply change the LOCK_BITS field to a value other than the default.
 
-> This is because `AVRDUDE` violates the JTAGICE mkII protocol rules, but since it is a proprietary extension, no correction can be expected at this time.
+```sh
+# Device lock operation
+$ avrdude ... -U lock:w:0:m
+```
 
-As a logical consequence, it became necessary to modify JTAG2UPDI so that all memory reads from locked devices return normal responses filled with dummy values. By doing so, his USERROW write using `-F` and release operation using FUSE/LOCK write were enabled correctly.
+For locked devices, only writing to the USERROW area is allowed. Since reading is not allowed, readback verification is not possible. In other words, you need at least the triple option `-F -V -U`. Only the application previously written to the device can know whether the writing was successful or not.
+
+On the other hand, device signatures cannot be read from locked devices. If there is no `-F` option, you will not be able to proceed with any further operations.
+
+Note that in the case of JTAG2UPDI (Clone), a false signature (when `ENABLE_PSEUDO_SIGNATURE` is enabled) is returned from the locked device, so for example, in the case of a locked ATmega4809, the following hint can be obtained (probably).
+
+```plain
+$ avrdude ... -FVU userrow:w:12,34,56,78:m
+
+avrdude warning: bad response to enter progmode command: RSP_ILLEGAL_MCU_STATE
+avrdude warning: bad response to enter progmode command: RSP_ILLEGAL_MCU_STATE
+avrdude: AVR device initialized and ready to accept instructions
+avrdude: device signature = 0x1e6d30 (probably megaAVR-0 locked device)
+avrdude warning: expected signature for ATmega4809 is 1E 96 51
+
+avrdude: processing -U userrow:w:12,34,56,78:m
+avrdude: reading input file 12,34,56,78 for userrow/usersig
+         with 4 bytes in 1 section within [0, 3]
+         using 1 page and 60 pad bytes
+avrdude: writing 4 bytes userrow/usersig ...
+Writing | ################################################## | 100% 0.01 s 
+avrdude: 4 bytes of userrow/usersig written
+
+avrdude done.  Thank you.
+```
+
+To unlock a locked device, use the `-e -F` option to force a full chip erase. Furthermore, use `-U` to restore the lock key correctly. If you do not return the lock key, you can only unlock the door for a short period of time until the power is turned off.
+
+```sh
+# Device unlock operation for tinyAVR and megaAVR
+$ avrdude ... -eFU lock:w:0xC5:m
+
+# Device unlocking operation for AVR_Dx/Ex
+$ avrdude ... -eFU lock:w:0x5C,0xC5,0xC5,0x5C:m
+```
+
+> If the UPDI control pin is disabled in the FUSE settings, it cannot be overridden and restored in the JTAG2UPDI implementation.
 
 ### Enhanced memory range specification violation detection
 
-This is a function that specifically rejects the specification of an unacceptable amount of write/read data. If rejected, `AVRDUDE` often falls back to single-byte read/write operations, so this is intentionally controlled from the JTAG2UPDI side. Usually, the cause of the error is a mistake in editing the configuration file. However, in the past, it was simply executed according to the settings, so it was not easy to understand why the abnormal operation occurred.
+This is a function that specifically rejects the specification of an unacceptable amount of write/read data. If rejected, `AVRDUDE` often falls back to single-byte read/write operations, so this is intentionally controlled from the JTAG2UPDI side. The cause of the error is usually a mistake in editing the configuration file or a mistake in specifying parts.
 
-- Do not allow reading or writing of 0 bytes. This will not happen unless you set it intentionally. (but not impossible)
-- Do not allow EEPROM writing with a data length that exceeds the true page granularity. This can especially occur when writing to EEPROM of the AVR_Dx family, where bulk writing is not possible.
-- Writing to FLASH is prohibited unless it matches the page granularity. This disallows 1-byte unit writes due to fallback. This is especially true when writing the `-D` option (the buffer memory becomes invalid), which is fatal. Exceptionally, AVR_EB's BOOTROW allows him to write 64 bytes, and AVR_Dx allows him to write 256 bytes (half the page granularity).
+- Do not allow reading or writing of 0 bytes. This shouldn't happen unless you set it intentionally. (but not impossible)
+- Do not allow EEPROM writes with data lengths exceeding the true (limited by NVMCTRL version) page granularity.
+- Writing to the FLASH area is prohibited unless it matches the page granularity or a special defined value.
 
-> It is currently undecided which memory type value BOOTROW will actually be implemented with, but it is assumed that it will be one for FLASH use.
+### CMND_GET_PARAMETER
 
-### Extensions inherited from UPDI4AVR
+Supports `PAR_TARGET_SIGNATURE` inquiry. This reads and returns the SIB (System Information Block) from UPDI if possible. SIB is not a general memory read, so using `CMND_GET_PARAMETER` does not violate the JTAGICE mkII protocol rules. The returned data length is 32 bytes, unlike `PDI/SPI` devices (which are fixed at 2 bytes).
 
-## CMND_GET_PARAMETER
-
-Supports `PAR_TARGET_SIGNATURE` inquiry. This reads and returns the SIB (System Information Block) from UPDI if possible. Since SIB is not a memory read in the general sense, using `CMND_GET_PARAMETER` is required by the JTAGICE mkII protocol specification. The returned data length is 32 bytes unlike `PDI/SPI` devices (which are 2 bytes).
+> For `PP/HV/PDI/SPI` devices, the `PAR_TARGET_SIGNATURE` query is used because the device signature cannot be read by normal memory reading. Devices from the XMEGA generation onwards do not use the device signature, as it is located in the normal IO memory area, and instead use normal memory reads.
 
 ## Build options
 
@@ -167,15 +201,17 @@ These macro declarations are provided in `sys.h`.
 
 ### NO_ACK_WRITE
 
-Enabled by default. Allow UPDI bulk data writing. Disabling it will reduce the transfer speed by half.
+Enabled by default. Allow UPDI bulk data writing. Disabling it will reduce memory write speed by half, but that is the only effect.
 
 ### DISABLE_HOST_TIMEOUT
 
-Disabled by default. Client side JATG communication timeout is not limited. This is useful when using interactive mode. However, if the host side implements his keepalive, it is not necessary.
+Disabled by default. Client side JATG communication timeout is not limited. This is useful when using interactive mode a lot. However, if the host implements his keepalive, there is no need to enable it.
+
+> If you cannot succeed without lowering the UPDI communication speed, the wiring load is excessive. This can usually be improved by removing excessive series resistors and pull-up resistors and making the wiring short enough.
 
 ### DISABLE_TARGET_TIMEOUT
 
-Disabled by default. Do not limit UDPI communication timeout. However, it has no practical meaning unless you disable his JTAG communication timeout on the host side.
+Disabled by default. Do not limit UDPI communication timeout. It should not be used as it has significant side effects.
 
 ### INCLUDE_EXTRA_INFO_JTAG
 
@@ -183,22 +219,22 @@ Disabled by default. Add the obtained detailed device information to the respons
 
 ### ENABLE_PSEUDO_SIGNATURE
 
-Enabled by default. Returns a pseudo signature when the device is locked. The following six types of pseudo signatures are currently generated.
+Enabled by default. If UDPI is not disabled and the device is locked, a pseudo device signature will be returned. The following six types of pseudo signatures are currently generated.
 
-|Code|Description|
+|Signature|Description|
 |-|-|
-|0x1e 0x74 0x30|Locked tinyAVR
-|0x1e 0x6d 0x30|Locked megaAVR
+|0x1e 0x74 0x30|Locked tinyAVR-0/1/2
+|0x1e 0x6d 0x30|Locked megaAVR-0
 |0x1e 0x41 0x32|Locked AVR_DA/DB/DD
 |0x1e 0x41 0x33|Locked AVR_EA
 |0x1e 0x41 0x34|Locked AVR_DU
 |0x1e 0x41 0x35|Locked AVR_EB
 
-By adding the corresponding part settings to the configuration file, you will be able to easily visualize the differences in the error output.
+By adding the corresponding part settings to the configuration file, you will be able to easily visualize the differences. At the same time, this is also a summary of the only SIB that can be obtained from a locking device, making it clear that the device can be unlocked without HV control.
 
 ```sh
 #------------------------------------------------------------
-# Locked Device
+# Locked device pseudo signature
 #------------------------------------------------------------
 
 part
@@ -232,7 +268,7 @@ part
 ;
 ```
 
-> The 2nd byte indicates the first byte value of SIB, and the 3rd byte indicates the NVMCTRL version.
+When this feature is disabled, the device signature always responds with `0xff 0xff 0xff`.
 
 ## Copyright and Contact
 
