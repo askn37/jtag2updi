@@ -24,6 +24,7 @@ JTAG2::packet_t JTAG2::packet;
 // Local objects
 namespace {
   // *** Local variables ***
+  uint32_t before_address = -1;
   uint16_t before_seqnum = -1;
   uint16_t flash_pagesize;
   uint8_t eeprom_pagesize;
@@ -39,9 +40,9 @@ namespace {
   void NVM_write_bulk_wide(const uint32_t addr24, uint16_t length);
   void NVM_write_userrow(const uint32_t addr24, uint16_t length);
   void NVM_write_fuse_v0(const uint16_t addr16, uint8_t data);
-  void NVM_write_flash_v0(const uint16_t addr16, uint16_t length);
-  void NVM_write_flash_v2(const uint32_t addr24, uint16_t length);
-  void NVM_write_flash_v3(const uint32_t addr24, uint16_t length);
+  void NVM_write_flash_v0(const uint16_t addr16, uint16_t length, bool is_bound);
+  void NVM_write_flash_v2(const uint32_t addr24, uint16_t length, bool is_bound);
+  void NVM_write_flash_v3(const uint32_t addr24, uint16_t length, bool is_bound);
   void NVM_write_eeprom_v0(const uint16_t addr16, uint16_t length);
   void NVM_write_eeprom_v2(const uint16_t addr16, uint16_t length);
   void NVM_write_eeprom_v3(const uint16_t addr16, uint16_t length);
@@ -126,6 +127,7 @@ void JTAG2::sign_on() {
   #ifdef ENABLE_PSEUDO_SIGNATURE
   *(uint32_t*)&dummy_sig[4] = -1;
   #endif
+  before_address = -1;
 }
 
 void JTAG2::get_parameter() {
@@ -405,7 +407,7 @@ void JTAG2::go() {
       case MTYPE_FLASH:       // high-code-flash-region
       case MTYPE_BOOT_FLASH:  // high-code-flash-region
       {
-        if (length != flash_pagesize && length != 256 && length != 64) {
+        if (length != flash_pagesize && length != 256 && length != 64 && length != 2) {
           /* Reject deta lengths that do not match page granularity */
           /* 256-byte division of AVR_Dx and 64-byte BOOTROW are allowed. */
           set_status(RSP_ILLEGAL_MEMORY_RANGE, nvmctrl_version);
@@ -413,9 +415,15 @@ void JTAG2::go() {
           packet.size_word[0] = 4;
           return;
         }
-        if (     nvmctrl_version == '0') NVM_write_flash_v0(address, length);
-        else if (nvmctrl_version == '2') NVM_write_flash_v2(address, length);
-        else          /* ver 3 or 5*/    NVM_write_flash_v3(address, length);
+        /* As a result of fallback, there are cases where multiple attempts */
+        /* are made to write to the same address. */
+        /* Save the previous address in case you delete the page repeatedly. */
+        const bool is_bound = !chip_erased && before_address != address
+                                           && (address & (flash_pagesize - 1)) == 0;
+        before_address = address;
+        if (     nvmctrl_version == '0') NVM_write_flash_v0(address, length, is_bound);
+        else if (nvmctrl_version == '2') NVM_write_flash_v2(address, length, is_bound);
+        else          /* ver 3 or 5*/    NVM_write_flash_v3(address, length, is_bound);
         break;
       }
       default : {
@@ -653,10 +661,9 @@ namespace {
     NVM::command<false>(NVM::WFU);
   }
 
-  void NVM_write_flash_v0(const uint16_t address, uint16_t length) {
+  void NVM_write_flash_v0(const uint16_t address, uint16_t length, bool is_bound) {
     /* version 0 is a 128 byte block */
-    const bool page_boundary = !chip_erased && (address & (flash_pagesize - 1)) == 0;
-    if (page_boundary) {
+    if (is_bound) {
       NVM::wait<false>();
       NVM::command<false>(NVM::PBC);
     }
@@ -665,11 +672,10 @@ namespace {
     NVM::command<false>(NVM::ERWP);
   }
 
-  void NVM_write_flash_v2(const uint32_t address, uint16_t length) {
+  void NVM_write_flash_v2(const uint32_t address, uint16_t length, bool is_bound) {
     /* version 2 is a 512 byte block */
     /* If the host PC's timeout is short, you can only write up to 500kbps */
-    const bool page_boundary = !chip_erased && (address & (flash_pagesize - 1)) == 0;
-    if (page_boundary) {
+    if (is_bound) {
       NVM_v2::wait<false>();
       NVM_v2::command<false>(NVM_v2::FLPER);
       UPDI::sts_b_l(address, 0xff);
@@ -682,10 +688,9 @@ namespace {
     NVM_v2::command<false>(NVM_v2::NOCMD);
   }
 
-  void NVM_write_flash_v3(const uint32_t address, uint16_t length) {
+  void NVM_write_flash_v3(const uint32_t address, uint16_t length, bool is_bound) {
     /* version 2 is a 128 byte block */
-    const bool page_boundary = !chip_erased && (address & (flash_pagesize - 1)) == 0;
-    if (page_boundary) {
+    if (is_bound) {
       NVM_v3::wait<false>();
       NVM_v3::command<false>(NVM_v3::NOCMD);
       NVM_v3::command<false>(NVM_v3::FLPBCLR);
