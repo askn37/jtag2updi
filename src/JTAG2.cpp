@@ -11,6 +11,7 @@
 #include "NVM.h"
 #include "NVM_v2.h"
 #include "NVM_v3.h"
+#include "NVM_v4.h"
 #include "crc16.h"
 #include "UPDI_hi_lvl.h"
 #include "dbg.h"
@@ -43,9 +44,11 @@ namespace {
   void NVM_write_flash_v0(const uint16_t addr16, uint16_t length, bool is_bound);
   void NVM_write_flash_v2(const uint32_t addr24, uint16_t length, bool is_bound);
   void NVM_write_flash_v3(const uint32_t addr24, uint16_t length, bool is_bound);
+  void NVM_write_flash_v4(const uint32_t addr24, uint16_t length, bool is_bound);
   void NVM_write_eeprom_v0(const uint16_t addr16, uint16_t length);
   void NVM_write_eeprom_v2(const uint16_t addr16, uint16_t length);
   void NVM_write_eeprom_v3(const uint16_t addr16, uint16_t length);
+  void NVM_write_eeprom_v4(const uint16_t addr16, uint16_t length);
   void include_extra_info(const uint8_t sernumlen);
   void set_nvmctrl_version();
 
@@ -234,6 +237,9 @@ void JTAG2::enter_progmode() {
       /* fall-thru */
     // in normal operation mode
     case 0x82:
+      // Disable (ACC PHY.) Time-Out Detection
+      UPDI::stcs(UPDI::reg::Control_A, 0x13); // DTD Set, RSD Unset, Guard Time Value := 16 bitclock
+
       // Reset the MCU now, to prevent the WDT (if active) to reset it at an unpredictable moment
       if (!UPDI::CPU_reset()){ //if we timeout while trying to reset, we are not communicating with chip, probably wiring error.
         set_status(RSP_NO_TARGET_POWER);
@@ -423,6 +429,7 @@ void JTAG2::go() {
         before_address = address;
         if (     nvmctrl_version == '0') NVM_write_flash_v0(address, length, is_bound);
         else if (nvmctrl_version == '2') NVM_write_flash_v2(address, length, is_bound);
+        else if (nvmctrl_version == '4') NVM_write_flash_v4(address, length, is_bound);
         else          /* ver 3 or 5*/    NVM_write_flash_v3(address, length, is_bound);
         break;
       }
@@ -458,6 +465,7 @@ void JTAG2::go() {
           case MTYPE_EEPROM_XMEGA:
             if (     nvmctrl_version == '0') NVM_write_eeprom_v0(address, length);
             else if (nvmctrl_version == '2') NVM_write_eeprom_v2(address, length);
+            else if (nvmctrl_version == '4') NVM_write_eeprom_v4(address, length);
             else          /* ver 3 or 5*/    NVM_write_eeprom_v3(address, length);
             break;
           default:
@@ -532,6 +540,13 @@ void JTAG2::go() {
           NVM_v2::command<false>(NVM_v2::FLPER);
           UPDI::sts_b_l(address, 0xff);
         }
+        else if (nvmctrl_version == '4') {
+          // Wait for completion of any previous NVM command then clear it with NOOP
+          NVM_v4::wait<false>();
+          NVM_v4::command<false>(NVM_v4::NOCMD);
+          NVM_v4::command<false>(NVM_v4::FLPER);
+          UPDI::sts_b_l(address, 0xff);
+        }
         else {
           NVM_v3::wait<false>();
           NVM_v3::command<false>(NVM_v3::NOCMD);
@@ -565,7 +580,7 @@ namespace {
     if (length == 1) return UPDI::sts_b_l(address, *p);
     UPDI::stptr_l(address);
     #ifdef NO_ACK_WRITE
-    UPDI::stcs(UPDI::reg::Control_A, 0x0E); // RSD ON
+    UPDI::stcs(UPDI::reg::Control_A, 0x1B); // RSD ON
     #endif
     UPDI::rep(length - 1);
     UPDI_io::put(UPDI::SYNCH);
@@ -577,7 +592,7 @@ namespace {
       #endif
     } while (--length);
     #ifdef NO_ACK_WRITE
-    UPDI::stcs(UPDI::reg::Control_A, 0x06); // RSD OFF
+    UPDI::stcs(UPDI::reg::Control_A, 0x13); // RSD OFF
     #endif
   }
 
@@ -702,6 +717,22 @@ namespace {
     NVM_v3::command<false>(NVM_v3::FLPERW);
   }
 
+  void NVM_write_flash_v4(const uint32_t address, uint16_t length, bool is_bound) {
+    /* version 4 is a 512 byte block */
+    /* If the host PC's timeout is short, you can only write up to 500kbps */
+    if (is_bound) {
+      NVM_v4::wait<false>();
+      NVM_v4::command<false>(NVM_v4::FLPER);
+      UPDI::sts_b_l(address, 0xff);
+      NVM_v4::wait<false>();
+      NVM_v4::command<false>(NVM_v4::NOCMD);
+    }
+    NVM_v4::wait<false>();
+    NVM_v4::command<false>(NVM_v4::FLWR);
+    NVM_write_bulk_wide(address, length);
+    NVM_v4::command<false>(NVM_v4::NOCMD);
+  }
+
   void NVM_write_eeprom_v0(const uint16_t address, uint16_t length) {
     /* Version 0 allows 32 or 64 byte bulk writes */
     NVM::wait<false>();
@@ -735,6 +766,19 @@ namespace {
     NVM_v3::command<false>(NVM_v3::EEPERW);
   }
 
+  void NVM_write_eeprom_v4(const uint16_t address, uint16_t length) {
+    if (length > 4) {
+      /* version 4 can only write 4 bytes at a time */
+      /* Increasing the timeout on the host PC can result in more writes */
+      JTAG2::set_status(JTAG2::RSP_ILLEGAL_MEMORY_RANGE);
+      return;
+    }
+    NVM_v4::wait<false>();
+    NVM_v4::command<false>(NVM_v4::EEERWR);
+    NVM_write_bulk(address, length);
+    NVM_v4::command<false>(NVM_v4::NOCMD);
+  }
+
   void include_extra_info(const uint8_t sernumlen) {
     #if defined(INCLUDE_EXTRA_INFO_JTAG)
     // get the REV ID - I believe (will be confirming with Microchip support) that this is the silicon revision ID
@@ -755,8 +799,10 @@ namespace {
     packet.body[5]= 'S';
     packet.body[6]= 'E';
     packet.body[7]= 'R';
-    if(nvmctrl_version == '0'){
+    if (nvmctrl_version == '0') {
       UPDI::stptr_w(0x1103);
+    } else if (nvmctrl_version == '4' || nvmctrl_version == '5') {
+      UPDI::stptr_w(0x1090);
     } else {
       UPDI::stptr_l(0x1110);
     }
@@ -773,13 +819,15 @@ namespace {
     #elif defined(DEBUG_ON)
     // if we're not adding extended info in JTAG,
     // but debug is on, I guess we should still report this...
-    uint8_t sernumber[10];
-    if(nvmctrl_version == '0'){
+    uint8_t sernumber[16];
+    if (nvmctrl_version == '0') {
       UPDI::stptr_w(0x1103);
+    } else if (nvmctrl_version == '4' || nvmctrl_version == '5') {
+      UPDI::stptr_w(0x1090);
     } else {
       UPDI::stptr_l(0x1100);
     }
-    UPDI::rep(9);
+    UPDI::rep(sernumlen);
     sernumber[0]=UPDI::ldinc_b();
     for(uint8_t i=1;i<(sernumlen+1);i++){
       sernumber[i]=UPDI_io::get();

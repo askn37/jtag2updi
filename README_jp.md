@@ -12,9 +12,10 @@
 
 ## 変化したこと
 
-- NVMCTRL version 0,2,3,5 に対応する。原典の対応は 0 と 2 までである。
+- NVMCTRL version 0,2,3,4,5 に対応する。原典の対応は 0 と 2 までである。
   - tinyAVR-0/1/2 、megaAVR-0 、AVR_DA/DB/DD/EA/EB を支援する。
     - UPDI層 SIB（System Information Block）に対応。
+  - AVR_DU（NVMCTRLv4）支援は、2023/12時点で暫定／実験的。
   - 主な動作確認済デバイス： ATtiny202 ATtiny412 ATtiny824 ATtiny1614 ATmega4809 AVR32DA32 AVR128DB32 AVR32DD14 AVR64DD32 AVR64EA32 (2023/11時点)
 - AVRDUDE 7.3 対応。
   - 動作確認済： `AVRDUDE` `7.2`、`7.3`（2023/11時点で開発中）
@@ -55,29 +56,28 @@ NVMCTRLは各系統によって仕様が異なる。そのバージョンは SIB
 
 各バージョンでの制御レジスタ定義の一覧を以下に示す。
 
-|Offset|version 0|version 2|version 3|version 5|
-|-|-|-|-|-|
-|Series|(tiny,mega)AVR|AVR_DA/DB/DD|AVR_EA|AVR_EB
-|$00|CTRLA|CTRLA|CTRLA|CTRLA
-|$01|CTRLB|CTRLB|CTRLB|CTRLB
-|$02|STATUS|STATUS|-|CTRLC
-|$03|INTCTRL|INTCTRL|-|-
-|$04|INTFLAGS|INTFLAGS|INTCTRL|INTCTRL
-|$05|-|-|INTFLAGS|INTFLAGS
-|$06|DATAL|DATAL|STATUS|STATUS
-|$07|DARAH|DARAH|-|-
-|$08|ADDRL|ADDR0|DATAL|DATAL
-|$09|ADDRH|ADDR1|DATAH|DATAH
-|$0A|-|ADDR2|-|-
-|$0B|-|_ADDR3_|-|-
-|$0C|-|-|ADDR0|ADDR0
-|$0D|-|-|ADDR1|ADDR1
-|$0E|-|-|ADDR2|ADDR2
-|$0F|-|-|_ADDR3_|_ADDR3_
+|Offset|version 0|version 2|version 3|version 4|version 5|
+|-|-|-|-|-|-|
+|Series|(tiny,mega)AVR|AVR_DA/DB/DD|AVR_EA|AVR_DU|AVR_EB
+|$00|CTRLA|CTRLA|CTRLA|CTRLA|CTRLA
+|$01|CTRLB|CTRLB|CTRLB|CTRLB|CTRLB
+|$02|STATUS|STATUS|-|CTRLC|CTRLC
+|$03|INTCTRL|INTCTRL|-|-|-
+|$04|INTFLAGS|INTFLAGS|INTCTRL|INTCTRL|INTCTRL
+|$05|-|-|INTFLAGS|INTFLAGS|INTFLAGS
+|$06|DATAL|DATAL|STATUS|STATUS|STATUS
+|$07|DARAH|DARAH|-|-|-
+|$08|ADDRL|ADDR0|DATAL|DATA0|DATAL
+|$09|ADDRH|ADDR1|DATAH|DATA1|DATAH
+|$0A|-|ADDR2|-|DATA2|-
+|$0B|-|_ADDR3_|-|DATA3|-
+|$0C|-|-|ADDR0|ADDR0|ADDR0
+|$0D|-|-|ADDR1|ADDR1|ADDR0
+|$0E|-|-|ADDR2|ADDR2|ADDR0
+|$0F|-|-|_ADDR3_|_ADDR3_|_ADDR3_
 
-> _斜体_ のシンボルは定義されているものの、実際には機能しない。\
-> version 1 の実装は知られていない。\
-> version 4 は AVR_DU に割り当てられているが、現在は実物がなく情報もない。
+> _斜体_ のシンボルは定義されているものの、実際には機能しない。常にゼロであるべきだ。\
+> version 1 の実装は知られていない。
 
 `NVMCTRL_ADDR2`の最上位ビットには特別な意味があり、0は一般データ領域を、1はFLASHコード領域（現在は最大128KiB）のアドレスを指定するフラグとして使われる。version 0 にはこれがなく、データもコードも同一の64KiB空間内で区別されない。
 
@@ -97,6 +97,7 @@ NVM書き込みは、直接対象のアドレスに（UPDIのST/STS指令、あ�
 - EEPROMも FLASHと同等のページ粒度でバルク書き込みができるため、処理が高速。
 - USERROW へは EEPROM と同じ指令コードを使用して書ける。（しかし専用に用意された方法を用いるべきだ）
 - FUSEメモリは特別な専用書き込み指令がある。直接 DATA と ADDR レジスタに書いた後、専用指令を CTRLA に書く。
+- AVR命令セットでは SPM命令が存在しない。未定義ではなく NOPに同等。一方で LPM命令はあるため、コード領域先頭アドレス相対で FLASH領域を読むことはできる。
 
 #### NVMCTRL version 2
 
@@ -110,7 +111,7 @@ NVM書き込みは、直接対象のアドレスに（UPDIのST/STS指令、あ�
 - FUSEは、EEPROMと同じ指令コードを使用して書ける。
 - USERROWは、FLASHと同じ指令コードを使用して書ける。（しかし専用に用意された方法を用いるべきだ）
 
-この系統のみ、FLASHページ粒度が 512バイトである。しかしこの大きさに対応したNVMライターは一般的ではないことから、`AVRDUDE`は 256バイトの2個のブロックに分割して書き込もうとする。
+この系統は、FLASHページ粒度が 512バイトである。しかしこの大きさに対応したNVMライターは一般的ではないことから、`AVRDUDE`は 256バイトの2個のブロックに分割して書き込もうとする。
 
 #### NVMCTRL version 3,5
 
@@ -125,6 +126,14 @@ NVM書き込みは、直接対象のアドレスに（UPDIのST/STS指令、あ�
 - （version 5に特有の）BOOTROWは、FLASHと同じ指令コードを使用する。
 
 UPDIからの NVM書き換え作業では CTRLC を使わないため、version 3 と 5 では同じ制御処理を共用できる。ただしNVM領域の実体アドレスの多くが異なるため、取り扱いは区別される。
+
+#### NVMCTRL version 4
+
+この系統は version 5 の NVMCTRLレジスタファイルと、version 2 の NVMCTRL指令セットを持つ。AVR_DUに実装されているが（おそらく）使用方法は version 2 に準じている。ただしNVM領域の実体アドレスの多くが異なるため、取り扱いは区別される。
+
+この系統は 作業用緩衝メモリ を持たない。DATAレジスタは 2ワード分があるため（おそらく）EEPROMは 4バイト単位で書ける。
+
+この系統は、FLASHページ粒度が 512バイトである。しかしこの大きさに対応したNVMライターは一般的ではないことから、`AVRDUDE`は 256バイトの2個のブロックに分割して書き込もうとする。
 
 ### 部分メモリブロック書き込み
 
@@ -165,7 +174,7 @@ avrdude: reading input file 12,34,56,78 for userrow/usersig
          with 4 bytes in 1 section within [0, 3]
          using 1 page and 60 pad bytes
 avrdude: writing 4 bytes userrow/usersig ...
-Writing | ################################################## | 100% 0.01 s 
+Writing | ################################################## | 100% 0.01 s
 avrdude: 4 bytes of userrow/usersig written
 
 avrdude done.  Thank you.
@@ -271,6 +280,11 @@ part
 ```
 
 この機能を無効化した場合のデバイス署名は、常に`0xff 0xff 0xff`で応答する。
+
+## 更新履歴
+
+- 2023/12/19 AVR_DU用の暫定／実験的対応を追加（AVRDUDE 7.4のために）
+- 2023/11/28 最初の版
 
 ## Copyright and Contact
 

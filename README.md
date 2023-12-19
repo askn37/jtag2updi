@@ -12,9 +12,10 @@ The difference between the two should be obtained by `diff -uBw jtag2updi-master
 
 ## What has changed
 
-- Compatible with NVMCTRL version 0,2,3,5. The correspondence in the original text is up to 0 and 2.
+- Compatible with NVMCTRL version 0,2,3,4,5. The correspondence in the original text is up to 0 and 2.
    - Support tinyAVR-0/1/2, megaAVR-0, AVR_DA/DB/DD/EA/EB.
      - Compatible with UPDI layer SIB (System Information Block).
+   - AVR_DU (NVMCTRLv4) support is provisional/experimental as of December 2023.
    - Main devices confirmed to work: ATtiny202 ATtiny412 ATtiny824 ATtiny1614 ATmega4809 AVR32DA32 AVR128DB32 AVR32DD14 AVR64DD32 AVR64EA32 (as of November 2023)
 - Compatible with AVRDUDE 7.3.
    - Operation confirmed: `AVRDUDE` `7.2`, `7.3` (under development as of November 2023)
@@ -55,29 +56,28 @@ NVMCTRL specifications differ depending on each system. The versions are classif
 
 A list of control register definitions for each version is shown below.
 
-|Offset|version 0|version 2|version 3|version 5|
-|-|-|-|-|-|
-|Series|(tiny,mega)AVR|AVR_DA/DB/DD|AVR_EA|AVR_EB
-|$00|CTRLA|CTRLA|CTRLA|CTRLA
-|$01|CTRLB|CTRLB|CTRLB|CTRLB
-|$02|STATUS|STATUS|-|CTRLC
-|$03|INTCTRL|INTCTRL|-|-
-|$04|INTFLAGS|INTFLAGS|INTCTRL|INTCTRL
-|$05|-|-|INTFLAGS|INTFLAGS
-|$06|DATAL|DATAL|STATUS|STATUS
-|$07|DARAH|DARAH|-|-
-|$08|ADDRL|ADDR0|DATAL|DATAL
-|$09|ADDRH|ADDR1|DATAH|DATAH
-|$0A|-|ADDR2|-|-
-|$0B|-|_ADDR3_|-|-
-|$0C|-|-|ADDR0|ADDR0
-|$0D|-|-|ADDR1|ADDR1
-|$0E|-|-|ADDR2|ADDR2
-|$0F|-|-|_ADDR3_|_ADDR3_
+|Offset|version 0|version 2|version 3|version 4|version 5|
+|-|-|-|-|-|-|
+|Series|(tiny,mega)AVR|AVR_DA/DB/DD|AVR_EA|AVR_DU|AVR_EB
+|$00|CTRLA|CTRLA|CTRLA|CTRLA|CTRLA
+|$01|CTRLB|CTRLB|CTRLB|CTRLB|CTRLB
+|$02|STATUS|STATUS|-|CTRLC|CTRLC
+|$03|INTCTRL|INTCTRL|-|-|-
+|$04|INTFLAGS|INTFLAGS|INTCTRL|INTCTRL|INTCTRL
+|$05|-|-|INTFLAGS|INTFLAGS|INTFLAGS
+|$06|DATAL|DATAL|STATUS|STATUS|STATUS
+|$07|DARAH|DARAH|-|-|-
+|$08|ADDRL|ADDR0|DATAL|DATA0|DATAL
+|$09|ADDRH|ADDR1|DATAH|DATA1|DATAH
+|$0A|-|ADDR2|-|DATA2|-
+|$0B|-|_ADDR3_|-|DATA3|-
+|$0C|-|-|ADDR0|ADDR0|ADDR0
+|$0D|-|-|ADDR1|ADDR1|ADDR0
+|$0E|-|-|ADDR2|ADDR2|ADDR0
+|$0F|-|-|_ADDR3_|_ADDR3_|_ADDR3_
 
-> Symbols in italics are defined but do not actually function. \
-> No known implementation of version 1. \
-> Version 4 is assigned to AVR_DU, but currently there is no actual version and no information.
+> Symbols in italics are defined but do not actually function. Should always be zero.\
+> No known implementation of version 1.
 
 The most significant bit of `NVMCTRL_ADDR2` has a special meaning: 0 is used as a flag to specify the address of the general data area, and 1 is used as a flag to specify the address of the FLASH code area (currently up to 128KiB). Version 0 does not have this, and data and code are not differentiated within the same 64KiB space.
 
@@ -97,6 +97,7 @@ In addition, this system has the following characteristics:
 - EEPROM can also be written in bulk with the same page granularity as FLASH, resulting in faster processing.
 -USERROW can be written using the same command code as EEPROM. (However, you should use a specially prepared method.)
 - FUSE memory has special dedicated write commands. After writing directly to the DATA and ADDR registers, he writes a dedicated command to CTRLA.
+- There is no SPM instruction in the AVR instruction set. Equivalent to NOP instead of undefined. On the other hand, since there is an LPM instruction, he can read the FLASH area relative to the start address of the code area.
 
 #### NVMCTRL version 2
 
@@ -110,7 +111,7 @@ This system has no working buffer memory. It has only one word buffer (that is, 
 - FUSE can be written using the same command codes as EEPROM.
 - USERROW can be written using the same command code as FLASH. (However, you should use a specially prepared method.)
 
-Only in this series, the FLASH page granularity is 512 bytes. However, since NVM writers that support this size are not common, `AVRDUDE` attempts to write his data in two 256-byte blocks.
+This family has a FLASH page granularity of 512 bytes. However, since NVM writers that support this size are not common, `AVRDUDE` attempts to write his data in two 256-byte blocks.
 
 #### NVMCTRL version 3,5
 
@@ -125,6 +126,14 @@ This system has different working buffer memories for his FLASH and EEPROM. Ther
 - BOOTROW (specific to version 5) uses the same directive codes as FLASH.
 
 In his NVM rewriting work from UPDI, he does not use CTRLC, so versions 3 and 5 can share the same control processing. However, since many of the physical addresses in the NVM area are different, they are handled differently.
+
+#### NVMCTRL version 4
+
+This family has version 5 of the NVMCTRL register file and version 2 of the NVMCTRL command set. It is implemented in AVR_DU, but the usage is (probably) based on version 2. However, since many of the actual addresses in the NVM area are different, they are handled differently.
+
+This system has no working buffer memory. Since the DATA register has 2 words, EEPROM can (probably) be written in 4-byte units.
+
+This family has a FLASH page granularity of 512 bytes. However, since NVM writers that support this size are not common, `AVRDUDE` attempts to write his data in two 256-byte blocks.
 
 ### Partial memory block write
 
@@ -165,7 +174,7 @@ avrdude: reading input file 12,34,56,78 for userrow/usersig
          with 4 bytes in 1 section within [0, 3]
          using 1 page and 60 pad bytes
 avrdude: writing 4 bytes userrow/usersig ...
-Writing | ################################################## | 100% 0.01 s 
+Writing | ################################################## | 100% 0.01 s
 avrdude: 4 bytes of userrow/usersig written
 
 avrdude done.  Thank you.
@@ -271,6 +280,11 @@ part
 ```
 
 When this feature is disabled, the device signature always responds with `0xff 0xff 0xff`.
+
+## Change log
+
+- 2023/12/19 Added interim/experimental support for AVR_DU (for AVRDUDE 7.4)
+- 2023/11/28 First edition
 
 ## Copyright and Contact
 
