@@ -25,8 +25,8 @@ JTAG2::packet_t JTAG2::packet;
 // Local objects
 namespace {
   // *** Local variables ***
-  uint32_t before_address = -1;
-  uint16_t before_seqnum = -1;
+  uint16_t before_seqnum;
+  uint16_t before_addr;
   uint16_t flash_pagesize;
   uint8_t eeprom_pagesize;
   uint8_t nvmctrl_version = '0';
@@ -130,7 +130,7 @@ void JTAG2::sign_on() {
   #ifdef ENABLE_PSEUDO_SIGNATURE
   *(uint32_t*)&dummy_sig[4] = -1;
   #endif
-  before_address = -1;
+  before_addr = ~0;
 }
 
 void JTAG2::get_parameter() {
@@ -397,9 +397,18 @@ void JTAG2::go() {
     }
 
     cpu_mode = UPDI::CPU_mode();
-    if ((cpu_mode & 1) && mem_type == MTYPE_USERSIG) {
-      // Pass when writing USERROW to the locking device (using '-DFVU')
-      cpu_mode = 0x08;
+    if ((cpu_mode & 1) && mem_type == MTYPE_USERSIG
+      && address <  NVM_v3::Boot_base
+      && address >= NVM_v3::User_base) {
+      /* Pass when writing USERROW to the locking device (using '-DFVU') */
+      /* In all versions, writes to USERROW should be written   */
+      /* using UROWKEY (and to a memory buffer that is          */
+      /* automatically overlapped on top of USERROW).           */
+      /* There are other methods, but they are not recommended. */
+      /* NVMv4,5 BOOTROW address ranges cannot be handled here. */
+      NVM_write_userrow(address, length);
+      if (packet.body[0] == RSP_OK) before_seqnum = packet.number;
+      return;
     }
 
     if (cpu_mode != 0x08) {
@@ -409,6 +418,7 @@ void JTAG2::go() {
     }
 
     switch (mem_type) {
+      case MTYPE_USERSIG:     // NVMv4,5 BOOTROW
       case MTYPE_FLASH_PAGE:  // low-code-flash-region
       case MTYPE_FLASH:       // high-code-flash-region
       case MTYPE_BOOT_FLASH:  // high-code-flash-region
@@ -421,12 +431,15 @@ void JTAG2::go() {
           packet.size_word[0] = 4;
           return;
         }
-        /* As a result of fallback, there are cases where multiple attempts */
-        /* are made to write to the same address. */
-        /* Save the previous address in case you delete the page repeatedly. */
-        const bool is_bound = !chip_erased && before_address != address
-                                           && (address & (flash_pagesize - 1)) == 0;
-        before_address = address;
+        /* A page block must be erased before writing to a new page block.
+           The new AVRDUDE splits large page blocks into multiple queries to read-modify-write.
+           This prevents atomic operations and requires special handling. */
+        bool is_bound = !chip_erased;
+        if (is_bound) {
+          uint16_t block_addr = (address >> 1) & ~((flash_pagesize - 1) >> 1);
+          is_bound = before_addr != block_addr;
+          before_addr = block_addr;
+        }
         if (     nvmctrl_version == '0') NVM_write_flash_v0(address, length, is_bound);
         else if (nvmctrl_version == '2') NVM_write_flash_v2(address, length, is_bound);
         else if (nvmctrl_version == '4') NVM_write_flash_v4(address, length, is_bound);
@@ -444,13 +457,6 @@ void JTAG2::go() {
           case MTYPE_SRAM:
             /* General writes to IO regions */
             NVM_write_bulk(address, length);
-            break;
-          case MTYPE_USERSIG:
-            /* In all versions, writes to USERROW should be written   */
-            /* using UROWKEY (and to a memory buffer that is          */
-            /* automatically overlapped on top of USERROW).           */
-            /* There are other methods, but they are not recommended. */
-            NVM_write_userrow(address, length);
             break;
           case MTYPE_FUSE_BITS:
           case MTYPE_LOCK_BITS:
@@ -704,7 +710,7 @@ namespace {
   }
 
   void NVM_write_flash_v3(const uint32_t address, uint16_t length, bool is_bound) {
-    /* version 2 is a 128 byte block */
+    /* version 3,5 is a 128 byte block */
     if (is_bound) {
       NVM_v3::wait<false>();
       NVM_v3::command<false>(NVM_v3::NOCMD);
