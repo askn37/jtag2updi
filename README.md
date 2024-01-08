@@ -206,6 +206,17 @@ Supports `PAR_TARGET_SIGNATURE` inquiry. This reads and returns the SIB (System 
 
 > For `PP/HV/PDI/SPI` devices, the `PAR_TARGET_SIGNATURE` query is used because the device signature cannot be read by normal memory reading. Devices from the XMEGA generation onwards do not use the device signature, as it is located in the normal IO memory area, and instead use normal memory reads.
 
+### Handling of AVR EA/EB series
+
+There are many potentially fatal design errors and many hidden (or undiscovered) silicon errata.
+Please note the following points regarding NVM operations.
+
+- There is a fatal errata in the CRCSCAN peripheral function. This should not be enabled by changing FUSE_SYSCFG0. Fixed in AVR EA with latest production lot.
+- With __AVR_EB__, the chip erase function in the UPDI peripheral function does not work properly. Chip erase of NVMCTRL peripheral function works normally.
+- In __AVR_EB__, LOCK.KEY and FUSE.PDICFG do not work as per public information.
+It is assumed that this was a design error in the LOCK.KEY function along with the chip erasure issue.
+Rewriting these fuses easily bricks the chip and there is no way to recover.
+
 ## Build options
 
 These macro declarations are provided in `sys.h`.
@@ -283,6 +294,7 @@ When this feature is disabled, the device signature always responds with `0xff 0
 
 ## Change log
 
+- 2024/01/08 Chip erasure and notes added for AVR_EB
 - 2023/12/19 Added interim/experimental support for AVR_DU (for AVRDUDE 7.4)
 - 2023/11/28 First edition
 
