@@ -32,9 +32,9 @@ namespace NVM_v2 {
     Reg_5,
     DATA_lo,
     DATA_hi,
-    ADDR_lo,
-    ADDR_hi,
-    ADDR_ho   // MSB :0 select data bus(ST/LD), :1 select code bus(SPM/LPM)
+    ADDR_0,
+    ADDR_1,
+    ADDR_2    // MSB :0 select data bus(ST/LD), :1 select code bus(SPM/LPM)
   };
 
   // *** NVM Commands (write to CTRLA to execute) ***

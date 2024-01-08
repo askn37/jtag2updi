@@ -38,10 +38,10 @@ namespace NVM_v3 {
     DATA_hi,
     Reserved_A,
     Reserved_B,
-    ADDR_lo,
-    ADDR_hi,
-    ADDR_ho,  // MSB :0 select data bus(ST/LD), :1 select code bus(SPM/LPM)
-    ADDR_hq   // version 5 only
+    ADDR_0,
+    ADDR_1,
+    ADDR_2,   // MSB :0 select data bus(ST/LD), :1 select code bus(SPM/LPM)
+    ADDR_3    // version 5 only
   };
 
   // *** NVM Commands (Execute by updating CTRLA after writing to memory) ***

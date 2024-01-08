@@ -66,14 +66,14 @@ A list of control register definitions for each version is shown below.
 |$04|INTFLAGS|INTFLAGS|INTCTRL|INTCTRL|INTCTRL
 |$05|-|-|INTFLAGS|INTFLAGS|INTFLAGS
 |$06|DATAL|DATAL|STATUS|STATUS|STATUS
-|$07|DARAH|DARAH|-|-|-
+|$07|DATAH|DATAH|-|-|-
 |$08|ADDRL|ADDR0|DATAL|DATA0|DATAL
 |$09|ADDRH|ADDR1|DATAH|DATA1|DATAH
 |$0A|-|ADDR2|-|DATA2|-
 |$0B|-|_ADDR3_|-|DATA3|-
 |$0C|-|-|ADDR0|ADDR0|ADDR0
-|$0D|-|-|ADDR1|ADDR1|ADDR0
-|$0E|-|-|ADDR2|ADDR2|ADDR0
+|$0D|-|-|ADDR1|ADDR1|ADDR1
+|$0E|-|-|ADDR2|ADDR2|ADDR2
 |$0F|-|-|_ADDR3_|_ADDR3_|_ADDR3_
 
 > Symbols in italics are defined but do not actually function. Should always be zero.\

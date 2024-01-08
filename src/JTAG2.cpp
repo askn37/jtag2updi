@@ -15,6 +15,7 @@
 #include "crc16.h"
 #include "UPDI_hi_lvl.h"
 #include "dbg.h"
+#include <avr/wdt.h>
 
 // *** Writeable Parameter Values ***
 JTAG2::baud_rate JTAG2::PARAM_BAUD_RATE_VAL;
@@ -25,15 +26,16 @@ JTAG2::packet_t JTAG2::packet;
 // Local objects
 namespace {
   // *** Local variables ***
+  uint32_t before_addr;
   uint16_t before_seqnum;
-  uint16_t before_addr;
   uint16_t flash_pagesize;
   uint8_t eeprom_pagesize;
   uint8_t nvmctrl_version = '0';
   #ifdef ENABLE_PSEUDO_SIGNATURE
   uint8_t dummy_sig[4] = { 0xff, 0xff, 0xff, 0xff };
   #endif
-  bool chip_erased = false;
+  bool chip_erased;
+  bool bootrow_update;
 
   // *** Local functions declaration ***
   void NVM_write_bulk_single(uint32_t addr24, uint16_t repeat);
@@ -125,12 +127,13 @@ void JTAG2::sign_on() {
     packet.body[i] = sgn_resp[i];
   }
   JTAG2::ConnectedTo |= 0x02; //now connected to host
+  bootrow_update = false;
   chip_erased = false;
+  before_addr = ~0;
   nvmctrl_version = '0';
   #ifdef ENABLE_PSEUDO_SIGNATURE
   *(uint32_t*)&dummy_sig[4] = -1;
   #endif
-  before_addr = ~0;
 }
 
 void JTAG2::get_parameter() {
@@ -308,6 +311,10 @@ void JTAG2::go() {
   UPDI::stcs(UPDI::reg::Control_B, 0x04); //set UPDISIS to tell it that we're done and it can stop running the UPDI peripheral.
   JTAG2::ConnectedTo &= ~(0x01); //record that we're no longer talking to the target
   set_status(RSP_OK);
+
+  /* Preliminary: After updating BOOTROW of AVR_EB,              */
+  /* the behavior will not be stable unless the system is reset. */
+  if (bootrow_update) wdt_enable(WDTO_1S);
 }
 
   // *** Read/Write/Erase functions ***
@@ -397,9 +404,7 @@ void JTAG2::go() {
     }
 
     cpu_mode = UPDI::CPU_mode();
-    if ((cpu_mode & 1) && mem_type == MTYPE_USERSIG
-      && address <  NVM_v3::Boot_base
-      && address >= NVM_v3::User_base) {
+    if ((cpu_mode & 1) && mem_type == MTYPE_USERSIG) {
       /* Pass when writing USERROW to the locking device (using '-DFVU') */
       /* In all versions, writes to USERROW should be written   */
       /* using UROWKEY (and to a memory buffer that is          */
@@ -418,6 +423,7 @@ void JTAG2::go() {
     }
 
     switch (mem_type) {
+      /* BOOTROW is accepted as MTYPE_FLASH. */
       case MTYPE_USERSIG:     // NVMv4,5 BOOTROW
       case MTYPE_FLASH_PAGE:  // low-code-flash-region
       case MTYPE_FLASH:       // high-code-flash-region
@@ -436,14 +442,18 @@ void JTAG2::go() {
            This prevents atomic operations and requires special handling. */
         bool is_bound = !chip_erased;
         if (is_bound) {
-          uint16_t block_addr = (address >> 1) & ~((flash_pagesize - 1) >> 1);
+          uint32_t block_addr = address & ~(flash_pagesize - 1);
           is_bound = before_addr != block_addr;
           before_addr = block_addr;
         }
-        if (     nvmctrl_version == '0') NVM_write_flash_v0(address, length, is_bound);
+        if      (nvmctrl_version == '0') NVM_write_flash_v0(address, length, is_bound);
         else if (nvmctrl_version == '2') NVM_write_flash_v2(address, length, is_bound);
         else if (nvmctrl_version == '4') NVM_write_flash_v4(address, length, is_bound);
-        else          /* ver 3 or 5*/    NVM_write_flash_v3(address, length, is_bound);
+        else          /* ver 3 or 5 */   NVM_write_flash_v3(address, length, is_bound);
+
+        /* Preliminary: After updating BOOTROW of AVR_EB,              */
+        /* the behavior will not be stable unless the system is reset. */
+        if (nvmctrl_version >= '4' && address < NVM_v3::User_base) bootrow_update = true;
         break;
       }
       default : {
@@ -469,10 +479,10 @@ void JTAG2::go() {
           case MTYPE_EEPROM:
           case MTYPE_EEPROM_PAGE:
           case MTYPE_EEPROM_XMEGA:
-            if (     nvmctrl_version == '0') NVM_write_eeprom_v0(address, length);
+            if      (nvmctrl_version == '0') NVM_write_eeprom_v0(address, length);
             else if (nvmctrl_version == '2') NVM_write_eeprom_v2(address, length);
             else if (nvmctrl_version == '4') NVM_write_eeprom_v4(address, length);
-            else          /* ver 3 or 5*/    NVM_write_eeprom_v3(address, length);
+            else          /* ver 3 or 5 */   NVM_write_eeprom_v3(address, length);
             break;
           default:
             set_status(RSP_ILLEGAL_MEMORY_TYPE);
@@ -492,6 +502,32 @@ void JTAG2::go() {
     switch (erase_type) {
       case XMEGA_ERASE_CHIP:
       {
+        if (UPDI::CPU_mode<9>() == 8) {
+          if (nvmctrl_version == '0') {
+            NVM::wait<false>();
+            NVM::command<false>(NVM::CHER);
+            NVM::wait<false>();
+            NVM::command<false>(NVM::NOP);
+          }
+          else if (nvmctrl_version == '2') {
+            NVM_v2::clear();
+            NVM_v2::command<false>(NVM_v2::NOCMD);
+            NVM_v2::command<false>(NVM_v2::CHER);
+          }
+          else {  /* version 3,4,5 */
+            NVM_v3::clear();
+            NVM_v3::command<false>(NVM_v3::NOCMD);
+            NVM_v3::command<false>(NVM_v3::CHER);
+            if (nvmctrl_version == '5') {
+              NVM_v3::wait<false>();
+              NVM_v3::command<false>(NVM_v3::NOCMD);
+              NVM_v3::command<false>(NVM_v3::FLPBCLR);
+            }
+          }
+          chip_erased = true;
+          break;
+        }
+
         // Write Chip Erase key
         UPDI::write_key(UPDI::Chip_Erase);
         // Request 1st reset
@@ -500,7 +536,7 @@ void JTAG2::go() {
           break;
         }
 
-        /* Locked AVR_Ex requires wait processing */
+        /* Locked AVR_EA requires wait processing */
         /* Wait for both the LOCKSTATUS bit of SYS_STATUS and CHIPERASE bit of KEY_STATUS to be cleared */
         while (UPDI::CPU_mode<0x01>());
         while (UPDI::ldcs(UPDI::reg::ASI_Key_Status) & 8);
@@ -683,7 +719,7 @@ namespace {
   }
 
   void NVM_write_flash_v0(const uint16_t address, uint16_t length, bool is_bound) {
-    /* version 0 is a 128 byte block */
+    /* version 0 is a 32, 64 or 128 byte block */
     if (is_bound) {
       NVM::wait<false>();
       NVM::command<false>(NVM::PBC);
@@ -710,7 +746,7 @@ namespace {
   }
 
   void NVM_write_flash_v3(const uint32_t address, uint16_t length, bool is_bound) {
-    /* version 3,5 is a 128 byte block */
+    /* version 3,5 is a 128 or 64 byte block */
     if (is_bound) {
       NVM_v3::wait<false>();
       NVM_v3::command<false>(NVM_v3::NOCMD);
