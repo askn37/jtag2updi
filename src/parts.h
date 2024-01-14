@@ -51,7 +51,7 @@
        defined(__AVR_AVR128DB28__) || defined(__AVR_AVR128DB32__) || defined(__AVR_AVR128DB48__) || defined(__AVR_AVR128DB64__) || \
        defined(__AVR_AVR64DB28__)  || defined(__AVR_AVR64DB32__)  || defined(__AVR_AVR64DB48__)  || defined(__AVR_AVR64DB64__)  || \
        defined(__AVR_AVR32DB28__)  || defined(__AVR_AV324DB32__)  || defined(__AVR_AVR32DB48__)  )
-       
+
       #define __AVR_DX__
 
 

@@ -209,13 +209,13 @@ uint8_t UPDI_io::put(char c) {
             // stop bits
             " delay %[txdelay] \n\t"
             " sbi %[uart_port], %[uart_pin] \n\t" // send bit out to serial link
-            
+
             // edge rise delay
             // we must give some time for the stop bit edge to rise before changing the data pin to input
             // this is because of possible parasitic capacitance affecting the UPDI line
             // Note that pre-delay and stop bit edge rise delay should add up to ~2x bit time
             " delay (%[txdelay] + 1)/2 \n\t"
-            
+
             :
             : [uart_port] "i" (_SFR_IO_ADDR(PORT(UPDI_PORT))),
               [uart_pin]  "i" (UPDI_PIN),

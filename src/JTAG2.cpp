@@ -507,6 +507,8 @@ void JTAG2::go() {
             NVM::wait<false>();
             NVM::command<false>(NVM::CHER);
             NVM::wait<false>();
+            NVM::command<false>(NVM::PBC);
+            NVM::wait<false>();
             NVM::command<false>(NVM::NOP);
           }
           else if (nvmctrl_version == '2') {
@@ -518,11 +520,13 @@ void JTAG2::go() {
             NVM_v3::clear();
             NVM_v3::command<false>(NVM_v3::NOCMD);
             NVM_v3::command<false>(NVM_v3::CHER);
-            if (nvmctrl_version == '5') {
-              NVM_v3::wait<false>();
-              NVM_v3::command<false>(NVM_v3::NOCMD);
-              NVM_v3::command<false>(NVM_v3::FLPBCLR);
-            }
+            NVM_v3::wait<false>();
+            NVM_v3::command<false>(NVM_v3::NOCMD);
+            NVM_v3::command<false>(NVM_v3::FLPBCLR);
+            NVM_v3::wait<false>();
+            NVM_v3::command<false>(NVM_v3::NOCMD);
+            NVM_v3::command<false>(NVM_v3::EEPBCLR);
+            NVM_v3::wait<false>();
           }
           chip_erased = true;
           break;
