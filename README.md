@@ -294,6 +294,7 @@ When this feature is disabled, the device signature always responds with `0xff 0
 
 ## Change log
 
+- 2024/01/26 NVM/V0 USERROW support fix
 - 2024/01/08 Chip erasure and notes added for AVR_EB
 - 2023/12/19 Added interim/experimental support for AVR_DU (for AVRDUDE 7.4)
 - 2023/11/28 First edition

@@ -438,6 +438,7 @@ void JTAG2::go() {
         /* According to ATDF, BOOTROW is a PRODSIG attribute. */
         /* PRODSIG is traditionally implemented as r/o, so there is a conflict. */
       case MTYPE_PRODSIG:     // low-code-flash-region
+        before_addr = ~0;
       case MTYPE_FLASH:       // low-code-flash-region
         /* This kind of memory is always considered dirty. */
         is_bound = true;
