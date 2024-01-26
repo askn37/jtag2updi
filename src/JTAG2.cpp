@@ -38,6 +38,7 @@ namespace {
   bool bootrow_update;
 
   // *** Local functions declaration ***
+  bool check_pagesize (uint16_t seed, uint16_t test);
   void NVM_write_bulk_single(uint32_t addr24, uint16_t repeat);
   void NVM_write_bulk(const uint32_t addr24, uint16_t repeat);
   void NVM_write_bulk_wide(const uint32_t addr24, uint16_t length);
@@ -114,6 +115,7 @@ void JTAG2::set_status(response status_code, uint8_t param) {
   packet.size_word[0] = 2;
   packet.body[0] = status_code;
   packet.body[1] = param;
+  before_addr = ~0;
 }
 
 // *** General command functions ***
@@ -245,7 +247,7 @@ void JTAG2::enter_progmode() {
 
       // Reset the MCU now, to prevent the WDT (if active) to reset it at an unpredictable moment
       if (!UPDI::CPU_reset()){ //if we timeout while trying to reset, we are not communicating with chip, probably wiring error.
-        set_status(RSP_NO_TARGET_POWER);
+        set_status(RSP_NO_TARGET_POWER, system_status);
         break;
       }
       // At this point we need to check if the chip is locked, if so don't attempt to enter program mode
@@ -259,7 +261,7 @@ void JTAG2::enter_progmode() {
       UPDI::write_key(UPDI::NVM_Prog);
       // Request reset
       if (!UPDI::CPU_reset()){ //if we timeout while trying to reset, we are not communicating with chip, probably wiring error.
-        set_status(RSP_NO_TARGET_POWER);
+        set_status(RSP_NO_TARGET_POWER, system_status);
         break;
       }
       /* fall-thru */
@@ -297,12 +299,13 @@ void JTAG2::leave_progmode() {
       // Turn off LED to indicate normal mode
       SYS::clearLED();
       if (!reset_ok) {
-        set_status(RSP_NO_TARGET_POWER); //this is a strange situation indeed, but tell the host anyway!
+        /* this is a strange situation indeed, but tell the host anyway! */
+        set_status(RSP_NO_TARGET_POWER, system_status);
       }
       break;
     // in other modes fail and inform host of wrong mode
     default:
-      set_status(RSP_ILLEGAL_MCU_STATE);
+      set_status(RSP_ILLEGAL_MCU_STATE, system_status);
   }
 }
 
@@ -334,7 +337,7 @@ void JTAG2::go() {
     if (length == 0 || (((length >> 8 ? length >> 1 : length) - 1) >> 8)) {
       /* More than 256 repeat units are not allowed */
       /* As a result, zero length will return an error before processing */
-      set_status(RSP_ILLEGAL_MEMORY_RANGE);
+      set_status(RSP_ILLEGAL_MEMORY_RANGE, nvmctrl_version);
       return;
     }
 
@@ -397,12 +400,6 @@ void JTAG2::go() {
     /* Received packet error retransmission exception */
     if (before_seqnum == packet.number) return;
 
-    if (mem_type == MTYPE_FLASH && address >> 24) {
-      /* Fixed AVRDUDE specific memory type confusion */
-      mem_type = MTYPE_SRAM;
-      address &= 0xFFFF;
-    }
-
     cpu_mode = UPDI::CPU_mode();
     if ((cpu_mode & 1) && mem_type == MTYPE_USERSIG) {
       /* Pass when writing USERROW to the locking device (using '-DFVU') */
@@ -422,16 +419,34 @@ void JTAG2::go() {
       return;
     }
 
+    if (mem_type == MTYPE_FLASH && (address >> 24)) {
+      /* Fixed AVRDUDE specific memory type confusion. */
+      /* High memory region is only allowed as a flash type. */
+      mem_type = MTYPE_SRAM;
+      address &= 0xFFFF;
+    }
+
+    /* USERROW of NVM V0 is EEPROM. */
+    if (mem_type == MTYPE_USERSIG && nvmctrl_version == '0') {
+      mem_type = MTYPE_EEPROM;
+    }
+
+    bool is_bound = !chip_erased;
     switch (mem_type) {
-      /* BOOTROW is accepted as MTYPE_FLASH. */
-      case MTYPE_USERSIG:     // NVMv4,5 BOOTROW
-      case MTYPE_FLASH_PAGE:  // low-code-flash-region
-      case MTYPE_FLASH:       // high-code-flash-region
-      case MTYPE_BOOT_FLASH:  // high-code-flash-region
+      case MTYPE_USERSIG:     // low-code-flash-region
+        /* BOOTROW is accepted as MTYPE_FLASH. */
+        /* According to ATDF, BOOTROW is a PRODSIG attribute. */
+        /* PRODSIG is traditionally implemented as r/o, so there is a conflict. */
+      case MTYPE_PRODSIG:     // low-code-flash-region
+      case MTYPE_FLASH:       // low-code-flash-region
+        /* This kind of memory is always considered dirty. */
+        is_bound = true;
+        /* Continue to next case. */
+      case MTYPE_FLASH_PAGE:  // high-code-flash-region (APPCODE)
+      case MTYPE_BOOT_FLASH:  // high-code-flash-region (BOOTCODE)
       {
-        if (length != flash_pagesize && length != 256 && length != 64 && length != 2) {
-          /* Reject deta lengths that do not match page granularity */
-          /* 256-byte division of AVR_Dx and 64-byte BOOTROW are allowed. */
+        if (!check_pagesize(flash_pagesize, length)) {
+          /* Reject deta lengths that do not match page granularity. */
           set_status(RSP_ILLEGAL_MEMORY_RANGE, nvmctrl_version);
           *(uint16_t*)&packet.body[2] = flash_pagesize;
           packet.size_word[0] = 4;
@@ -440,7 +455,6 @@ void JTAG2::go() {
         /* A page block must be erased before writing to a new page block.
            The new AVRDUDE splits large page blocks into multiple queries to read-modify-write.
            This prevents atomic operations and requires special handling. */
-        bool is_bound = !chip_erased;
         if (is_bound) {
           uint32_t block_addr = address & ~(flash_pagesize - 1);
           is_bound = before_addr != block_addr;
@@ -453,14 +467,14 @@ void JTAG2::go() {
 
         /* Preliminary: After updating BOOTROW of AVR_EB,              */
         /* the behavior will not be stable unless the system is reset. */
-        if (nvmctrl_version >= '4' && address < NVM_v3::User_base) bootrow_update = true;
+        // if (nvmctrl_version >= '4' && address < NVM_v3::User_base) bootrow_update = true;
         break;
       }
       default : {
         if (length == 0 || length > 256) {
           /* More than 256 repeat units are not allowed */
           /* As a result, zero length will return an error before processing */
-          set_status(RSP_ILLEGAL_MEMORY_RANGE);
+          set_status(RSP_ILLEGAL_MEMORY_RANGE, nvmctrl_version);
           return;
         }
         switch (mem_type) {
@@ -485,7 +499,7 @@ void JTAG2::go() {
             else          /* ver 3 or 5 */   NVM_write_eeprom_v3(address, length);
             break;
           default:
-            set_status(RSP_ILLEGAL_MEMORY_TYPE);
+            set_status(RSP_ILLEGAL_MEMORY_TYPE, nvmctrl_version);
         }
       }
     }
@@ -521,12 +535,14 @@ void JTAG2::go() {
             NVM_v3::command<false>(NVM_v3::NOCMD);
             NVM_v3::command<false>(NVM_v3::CHER);
             NVM_v3::wait<false>();
-            NVM_v3::command<false>(NVM_v3::NOCMD);
-            NVM_v3::command<false>(NVM_v3::FLPBCLR);
-            NVM_v3::wait<false>();
-            NVM_v3::command<false>(NVM_v3::NOCMD);
-            NVM_v3::command<false>(NVM_v3::EEPBCLR);
-            NVM_v3::wait<false>();
+            if (nvmctrl_version != '4') {
+              NVM_v3::command<false>(NVM_v3::NOCMD);
+              NVM_v3::command<false>(NVM_v3::FLPBCLR);
+              NVM_v3::wait<false>();
+              NVM_v3::command<false>(NVM_v3::NOCMD);
+              NVM_v3::command<false>(NVM_v3::EEPBCLR);
+              NVM_v3::wait<false>();
+            }
           }
           chip_erased = true;
           break;
@@ -536,7 +552,8 @@ void JTAG2::go() {
         UPDI::write_key(UPDI::Chip_Erase);
         // Request 1st reset
         if (!UPDI::CPU_reset()){
-          set_status(RSP_NO_TARGET_POWER); //if the reset failed, inform host, break out because the rest ain't gonna work
+          /* if the reset failed, inform host, break out because the rest ain't gonna work. */
+          set_status(RSP_NO_TARGET_POWER, 0);
           break;
         }
 
@@ -553,7 +570,8 @@ void JTAG2::go() {
 
         // Request 2nd reset
         if (!UPDI::CPU_reset()){
-          set_status(RSP_NO_TARGET_POWER); //if the reset failed, inform host, break out because the rest ain't gonna work
+          /* if the reset failed, inform host, break out because the rest ain't gonna work */
+          set_status(RSP_NO_TARGET_POWER, 0);
           break;
         }
 
@@ -614,6 +632,14 @@ void JTAG2::go() {
 
 // *** Local functions definition ***
 namespace {
+  bool check_pagesize (uint16_t seed, uint16_t test) {
+    while (test != seed) {
+      seed >>= 1;
+      if (seed < 2) return false;
+    }
+    return true;
+  }
+
   void NVM_write_bulk_single (uint32_t address, uint16_t length) {
     uint8_t *p = &JTAG2::packet.body[10];
     if (length == 1) return UPDI::sts_b_l(address, *p);
@@ -681,7 +707,7 @@ namespace {
 
     // Request reset
     if (!UPDI::CPU_reset()){
-      set_status(JTAG2::RSP_NO_TARGET_POWER);
+      set_status(JTAG2::RSP_NO_TARGET_POWER, nvmctrl_version);
       return;
     }
 
@@ -706,7 +732,7 @@ namespace {
 
     // Request reset
     if (!UPDI::CPU_reset()){
-      set_status(JTAG2::RSP_NO_TARGET_POWER);
+      set_status(JTAG2::RSP_NO_TARGET_POWER, nvmctrl_version);
       return;
     }
   }
@@ -789,8 +815,7 @@ namespace {
   void NVM_write_eeprom_v2(const uint16_t address, uint16_t length) {
     if (length > 2) {
       /* version 2 can only write 2 bytes at a time */
-      /* Increasing the timeout on the host PC can result in more writes */
-      JTAG2::set_status(JTAG2::RSP_ILLEGAL_MEMORY_RANGE);
+      JTAG2::set_status(JTAG2::RSP_ILLEGAL_MEMORY_RANGE, nvmctrl_version);
       return;
     }
     NVM_v2::wait<false>();
@@ -802,8 +827,7 @@ namespace {
   void NVM_write_eeprom_v3(const uint16_t address, uint16_t length) {
     if (length > 8) {
       /* version 3,5 can only write 8 bytes at a time */
-      /* Increasing the timeout on the host PC can result in more writes */
-      JTAG2::set_status(JTAG2::RSP_ILLEGAL_MEMORY_RANGE);
+      JTAG2::set_status(JTAG2::RSP_ILLEGAL_MEMORY_RANGE, nvmctrl_version);
       return;
     }
     NVM_v3::wait<false>();
@@ -815,8 +839,7 @@ namespace {
   void NVM_write_eeprom_v4(const uint16_t address, uint16_t length) {
     if (length > 4) {
       /* version 4 can only write 4 bytes at a time */
-      /* Increasing the timeout on the host PC can result in more writes */
-      JTAG2::set_status(JTAG2::RSP_ILLEGAL_MEMORY_RANGE);
+      JTAG2::set_status(JTAG2::RSP_ILLEGAL_MEMORY_RANGE, nvmctrl_version);
       return;
     }
     NVM_v4::wait<false>();
