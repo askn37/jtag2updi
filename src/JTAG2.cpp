@@ -288,6 +288,13 @@ void JTAG2::leave_progmode() {
   const uint8_t system_status = UPDI::CPU_mode<0xEF>();
   bool reset_ok = false;
   set_status(RSP_OK);
+  if (system_status & 0x08) {
+    // Please wait until NVMCTRL_STATUS completes before performing leave
+    if      (nvmctrl_version == '0') NVM::wait<false>();
+    else if (nvmctrl_version == '2') NVM_v2::wait<false>();
+    else if (nvmctrl_version == '4') NVM_v4::wait<false>();
+    else          /* ver 3 or 5 */   NVM_v3::wait<false>();
+  }
   switch (system_status) {
     // in program mode
     case 0x08:
