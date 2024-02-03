@@ -39,6 +39,9 @@
 // Returns pseudo signature when device is locked
 #define ENABLE_PSEUDO_SIGNATURE
 
+// To erase an unlocked chip, use the NVMCTRL function to erase FLASH.
+#define ENABLE_FAST_ERASE
+
 // Auxiliary Macros
 #define CONCAT(A,B) A##B                // concatenate
 #define XCONCAT(A,B) CONCAT(A,B)        // expand and concatenate

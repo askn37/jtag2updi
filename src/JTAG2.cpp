@@ -517,6 +517,7 @@ void JTAG2::go() {
     switch (erase_type) {
       case XMEGA_ERASE_CHIP:
       {
+        #ifdef ENABLE_FAST_ERASE
         if (UPDI::CPU_mode<9>() == 8) {
           if (nvmctrl_version == '0') {
             NVM::wait<false>();
@@ -548,6 +549,7 @@ void JTAG2::go() {
           chip_erased = true;
           break;
         }
+        #endif
 
         // Write Chip Erase key
         UPDI::write_key(UPDI::Chip_Erase);
@@ -670,7 +672,7 @@ namespace {
   }
 
   void NVM_write_bulk_wide (const uint32_t address, uint16_t length) {
-    if (length < 4 || (length >> 8) == 0) return NVM_write_bulk(address, length);
+    if (length < 4) return NVM_write_bulk(address, length);
     uint8_t *p = &JTAG2::packet.body[10];
     length = length >> 1;
     UPDI::stptr_l(address);
@@ -716,7 +718,7 @@ namespace {
     while (!(UPDI::ldcs(UPDI::reg::ASI_System_Status) & 0x04));
 
     /* Writes an array to the specified memory */
-    NVM_write_bulk(address, length);
+    NVM_write_bulk_wide(address, length);
 
     /* Write UROWDOWN and CLKREQ bit to ASI_System_Control_A */
     UPDI::stcs(UPDI::reg::ASI_System_Control_A, 0x03);
