@@ -322,9 +322,16 @@ void JTAG2::go() {
   JTAG2::ConnectedTo &= ~(0x01); //record that we're no longer talking to the target
   set_status(RSP_OK);
 
+  #ifdef ENABLE_CONTINUOUS_OPERATION
+  /* It will automatically reset as soon as the process is complete.         */
+  /* This is required to initialize the timer and allow continued operation. */
+  /* There is no opportunity to see the exit status LED.                     */
+  wdt_enable(WDTO_30MS);
+  #else
   /* Preliminary: After updating BOOTROW of AVR_EB,              */
   /* the behavior will not be stable unless the system is reset. */
   if (bootrow_update) wdt_enable(WDTO_1S);
+  #endif
 }
 
   // *** Read/Write/Erase functions ***
@@ -535,9 +542,11 @@ void JTAG2::go() {
             NVM::command<false>(NVM::NOP);
           }
           else if (nvmctrl_version == '2') {
+            NVM_v2::wait<false>();
             NVM_v2::clear();
             NVM_v2::command<false>(NVM_v2::NOCMD);
             NVM_v2::command<false>(NVM_v2::CHER);
+            NVM_v2::wait<false>();
           }
           else {  /* version 3,4,5 */
             NVM_v3::clear();
