@@ -294,6 +294,7 @@ When this feature is disabled, the device signature always responds with `0xff 0
 
 ## Change log
 
+- 2024/08/15 Fixed AVR_DU compatibility (AVRDUDE 8.0 compliant)
 - 2024/01/26 NVM/V0 USERROW support fix
 - 2024/01/08 Chip erasure and notes added for AVR_EB
 - 2023/12/19 Added interim/experimental support for AVR_DU (for AVRDUDE 7.4)
@@ -306,8 +307,7 @@ BlueSky Social: [@multix.jp](https://bsky.app/profile/multix.jp) \
 GitHub: [https://github.com/askn37/](https://github.com/askn37/) \
 Product: [https://askn37.github.io/](https://askn37.github.io/)
 
-Copyright (c) 2023 askn (K.Sato) multix.jp \
+Copyright (c) 2024 askn (K.Sato) multix.jp \
 Released under the MIT license \
 [https://opensource.org/licenses/mit-license.php](https://opensource.org/licenses/mit-license.php) \
 [https://www.oshwa.org/](https://www.oshwa.org/)
-

@@ -294,6 +294,7 @@ part
 
 ## 更新履歴
 
+- 2024/08/15 AVR_DU対応の修正（AVRDUDE 8.0準拠）
 - 2024/01/26 NVM/V0 USERROW 対応の修正
 - 2024/01/08 AVR_EB用のチップ消去と注意事項の追記
 - 2023/12/19 AVR_DU用の暫定／実験的対応を追加（AVRDUDE 7.4のために）
@@ -306,7 +307,7 @@ BlueSky Social: [@multix.jp](https://bsky.app/profile/multix.jp) \
 GitHub: [https://github.com/askn37/](https://github.com/askn37/) \
 Product: [https://askn37.github.io/](https://askn37.github.io/)
 
-Copyright (c) 2023 askn (K.Sato) multix.jp \
+Copyright (c) 2024 askn (K.Sato) multix.jp \
 Released under the MIT license \
 [https://opensource.org/licenses/mit-license.php](https://opensource.org/licenses/mit-license.php) \
 [https://www.oshwa.org/](https://www.oshwa.org/)
