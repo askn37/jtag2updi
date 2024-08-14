@@ -601,8 +601,6 @@ void JTAG2::go() {
         /* No need to proceed to enter_progmode() */
         break;
       }
-      /* In the case of AVRDUDE, there is no use below from here */
-      #ifdef ENABLE_ERASE_PAGE_COMMAND
       case XMEGA_ERASE_APP_PAGE:
       case XMEGA_ERASE_BOOT_PAGE:
       case XMEGA_ERASE_USERSIG:
@@ -641,7 +639,6 @@ void JTAG2::go() {
       case XMEGA_ERASE_EEPROM_PAGE:
         // Ignore page erase for eeprom, we use erase/write during the write step
         break;
-      #endif
       default:
         set_status(RSP_FAILED);
     }
