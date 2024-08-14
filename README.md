@@ -180,17 +180,18 @@ avrdude: 4 bytes of userrow/usersig written
 avrdude done.  Thank you.
 ```
 
-To unlock a locked device, use the `-e -F` option to force a full chip erase. Furthermore, use `-U` to restore the lock key correctly. If you do not return the lock key, you can only unlock the door for a short period of time until the power is turned off.
+To unlock a locked device, use the `-e -F` options to force a full chip erase. The lock key will be reset to its initial value, but it may not be reflected correctly unless the power is turned off once (because it is a FUSE area). If you want to unlock and restore the flash at the same time, it is a good idea to write the correct lock key with `-U` first.
 
 ```sh
-# Device unlock operation for tinyAVR and megaAVR
-$ avrdude ... -eFU lock:w:0xC5:m
-
-# Device unlocking operation for AVR_Dx/Ex
-$ avrdude ... -eFU lock:w:0x5C,0xC5,0xC5,0x5C:m
+# Device unlock operation (chip erase)
+$ avrdude ... -eF
 ```
 
-> If the UPDI control pin is disabled in the FUSE settings, it cannot be overridden and restored in the JTAG2UPDI implementation.
+> [!TIP]
+> If you disable the UPDI control pin in the FUSE settings, the JTAG2UPDI implementation cannot override this and restore it.
+
+> [!CAUTION]
+> For the AVR-DU/EB family, if you lock the device when `FUSE_PDICFG` is not the default, you will never be able to perform UPDI operations again.
 
 ### Enhanced memory range specification violation detection
 
