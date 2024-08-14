@@ -447,10 +447,6 @@ void JTAG2::go() {
 
     bool is_bound = !chip_erased;
     switch (mem_type) {
-      case MTYPE_USERSIG:     // low-code-flash-region
-        /* BOOTROW is accepted as MTYPE_FLASH. */
-        /* According to ATDF, BOOTROW is a PRODSIG attribute. */
-        /* PRODSIG is traditionally implemented as r/o, so there is a conflict. */
       case MTYPE_PRODSIG:     // low-code-flash-region
         before_addr = ~0;
       case MTYPE_FLASH:       // low-code-flash-region
@@ -459,6 +455,10 @@ void JTAG2::go() {
         /* Continue to next case. */
       case MTYPE_FLASH_PAGE:  // high-code-flash-region (APPCODE)
       case MTYPE_BOOT_FLASH:  // high-code-flash-region (BOOTCODE)
+      case MTYPE_USERSIG:     // low-code-flash-region
+        /* BOOTROW is accepted as MTYPE_FLASH. */
+        /* According to ATDF, BOOTROW is a PRODSIG attribute. */
+        /* PRODSIG is traditionally implemented as r/o, so there is a conflict. */
       {
         if (!check_pagesize(flash_pagesize, length)) {
           /* Reject deta lengths that do not match page granularity. */
