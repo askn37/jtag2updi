@@ -288,6 +288,13 @@ void JTAG2::leave_progmode() {
   const uint8_t system_status = UPDI::CPU_mode<0xEF>();
   bool reset_ok = false;
   set_status(RSP_OK);
+  if (system_status & 0x08) {
+    // Please wait until NVMCTRL_STATUS completes before performing leave
+    if      (nvmctrl_version == '0') NVM::wait<false>();
+    else if (nvmctrl_version == '2') NVM_v2::wait<false>();
+    else if (nvmctrl_version == '4') NVM_v4::wait<false>();
+    else          /* ver 3 or 5 */   NVM_v3::wait<false>();
+  }
   switch (system_status) {
     // in program mode
     case 0x08:
@@ -315,9 +322,16 @@ void JTAG2::go() {
   JTAG2::ConnectedTo &= ~(0x01); //record that we're no longer talking to the target
   set_status(RSP_OK);
 
+  #ifdef ENABLE_CONTINUOUS_OPERATION
+  /* It will automatically reset as soon as the process is complete.         */
+  /* This is required to initialize the timer and allow continued operation. */
+  /* There is no opportunity to see the exit status LED.                     */
+  wdt_enable(WDTO_30MS);
+  #else
   /* Preliminary: After updating BOOTROW of AVR_EB,              */
   /* the behavior will not be stable unless the system is reset. */
   if (bootrow_update) wdt_enable(WDTO_1S);
+  #endif
 }
 
   // *** Read/Write/Erase functions ***
@@ -433,10 +447,6 @@ void JTAG2::go() {
 
     bool is_bound = !chip_erased;
     switch (mem_type) {
-      case MTYPE_USERSIG:     // low-code-flash-region
-        /* BOOTROW is accepted as MTYPE_FLASH. */
-        /* According to ATDF, BOOTROW is a PRODSIG attribute. */
-        /* PRODSIG is traditionally implemented as r/o, so there is a conflict. */
       case MTYPE_PRODSIG:     // low-code-flash-region
         before_addr = ~0;
       case MTYPE_FLASH:       // low-code-flash-region
@@ -445,6 +455,10 @@ void JTAG2::go() {
         /* Continue to next case. */
       case MTYPE_FLASH_PAGE:  // high-code-flash-region (APPCODE)
       case MTYPE_BOOT_FLASH:  // high-code-flash-region (BOOTCODE)
+      case MTYPE_USERSIG:     // low-code-flash-region
+        /* BOOTROW is accepted as MTYPE_FLASH. */
+        /* According to ATDF, BOOTROW is a PRODSIG attribute. */
+        /* PRODSIG is traditionally implemented as r/o, so there is a conflict. */
       {
         if (!check_pagesize(flash_pagesize, length)) {
           /* Reject deta lengths that do not match page granularity. */
@@ -517,6 +531,7 @@ void JTAG2::go() {
     switch (erase_type) {
       case XMEGA_ERASE_CHIP:
       {
+        #ifdef ENABLE_FAST_ERASE
         if (UPDI::CPU_mode<9>() == 8) {
           if (nvmctrl_version == '0') {
             NVM::wait<false>();
@@ -527,9 +542,11 @@ void JTAG2::go() {
             NVM::command<false>(NVM::NOP);
           }
           else if (nvmctrl_version == '2') {
+            NVM_v2::wait<false>();
             NVM_v2::clear();
             NVM_v2::command<false>(NVM_v2::NOCMD);
             NVM_v2::command<false>(NVM_v2::CHER);
+            NVM_v2::wait<false>();
           }
           else {  /* version 3,4,5 */
             NVM_v3::clear();
@@ -548,6 +565,7 @@ void JTAG2::go() {
           chip_erased = true;
           break;
         }
+        #endif
 
         // Write Chip Erase key
         UPDI::write_key(UPDI::Chip_Erase);
@@ -583,8 +601,6 @@ void JTAG2::go() {
         /* No need to proceed to enter_progmode() */
         break;
       }
-      /* In the case of AVRDUDE, there is no use below from here */
-      #ifdef ENABLE_ERASE_PAGE_COMMAND
       case XMEGA_ERASE_APP_PAGE:
       case XMEGA_ERASE_BOOT_PAGE:
       case XMEGA_ERASE_USERSIG:
@@ -623,7 +639,6 @@ void JTAG2::go() {
       case XMEGA_ERASE_EEPROM_PAGE:
         // Ignore page erase for eeprom, we use erase/write during the write step
         break;
-      #endif
       default:
         set_status(RSP_FAILED);
     }
@@ -670,7 +685,7 @@ namespace {
   }
 
   void NVM_write_bulk_wide (const uint32_t address, uint16_t length) {
-    if (length < 4 || (length >> 8) == 0) return NVM_write_bulk(address, length);
+    if (length < 4) return NVM_write_bulk(address, length);
     uint8_t *p = &JTAG2::packet.body[10];
     length = length >> 1;
     UPDI::stptr_l(address);
@@ -716,7 +731,7 @@ namespace {
     while (!(UPDI::ldcs(UPDI::reg::ASI_System_Status) & 0x04));
 
     /* Writes an array to the specified memory */
-    NVM_write_bulk(address, length);
+    NVM_write_bulk_wide(address, length);
 
     /* Write UROWDOWN and CLKREQ bit to ASI_System_Control_A */
     UPDI::stcs(UPDI::reg::ASI_System_Control_A, 0x03);
